@@ -1,0 +1,178 @@
+#!/bin/bash
+
+# Disable shader cache in QT to better speed https://invent.kde.org/plasma/kwin/-/merge_requests/5802
+# export QT_DISABLE_SHADER_DISK_CACHE=1
+
+# Bolder font rendering
+#export FREETYPE_PROPERTIES="cff:no-stem-darkening=0 autofitter:no-stem-darkening=0"
+
+# Use Vulkaninfo to verify if only llvmpipe as vulkan render
+# Output true if using llvmpipe and false if using anotherr vulkan render
+if vulkaninfo --summary 2> /dev/null | grep 'deviceName' | grep -vq 'llvmpipe'; then
+    unset QSG_RENDER_LOOP
+    [[ -z $Vulkan_Supported ]] && export Vulkan_Supported=1
+else
+    [[ -z $QSG_RENDER_LOOP ]]  && export QSG_RENDER_LOOP="basic"
+    
+    # If using mesa amber force cairo renderer
+    if compgen -G /var/lib/pacman/local/mesa-amber-* || systemd-detect-virt -q; then
+        [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="cairo"
+    else
+        [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="ngl"
+    fi
+fi
+
+if [ "$1" = "wayland" ]; then
+    [[ -z $ELECTRON_OZONE_PLATFORM_HINT ]] && export ELECTRON_OZONE_PLATFORM_HINT=auto
+    [[ -z $MOZ_ENABLE_WAYLAND ]] && export MOZ_ENABLE_WAYLAND=1
+    [[ -z $KWIN_EFFECTS_FORCE_ANIMATIONS ]] && export KWIN_EFFECTS_FORCE_ANIMATIONS=1
+
+    # Less input lag for keyboard
+    [[ -z $IBUS_ENABLE_SYNC_MODE ]] && export IBUS_ENABLE_SYNC_MODE=1
+
+    exec --no-startup-id /usr/lib/pam_kwallet_init
+
+else
+
+    RESOLUTION="$(xdpyinfo | awk '/dimensions/ {print $2}')"
+    SCREEN="$(xrandr | grep 'connected primary' | cut -f1 -d" ")"
+    WIDTH=${RESOLUTION//x*}
+    HEIGHT=${RESOLUTION//*x}
+
+    [[ -z $KWIN_EFFECTS_FORCE_ANIMATIONS ]] && export KWIN_EFFECTS_FORCE_ANIMATIONS=1
+    [[ -z $MOZ_USE_XINPUT2 ]] && export MOZ_USE_XINPUT2=1
+
+fi
+
+# Force language
+[[ -z $LANGUAGE ]] && export LANGUAGE=$LANG
+
+# Checks if the shell has already been changed
+if [ ! -f "$HOME/.biglinux-shell-changed" ]; then
+    biglinux-change-default-shell bash-power
+    > "$HOME/.biglinux-shell-changed"
+fi
+
+# Use KDE dialog in some GTK apps like Firefox
+[[ -z $GTK_USE_PORTAL ]] && export GTK_USE_PORTAL=1
+
+#Faster AMD GPU
+if [ $HEIGHT -gt 1400 ]  2>/dev/null; then
+    [[ -z $RADV_FORCE_VRS ]] && export RADV_FORCE_VRS=2x2
+else
+    [[ -z $RADV_FORCE_VRS ]] && export RADV_FORCE_VRS=1x1
+fi
+    
+#Optimization for AMD GPU in kernel 6.6 and before
+kernel_version=$(uname -r | grep -oE '[0-9]\.[0-9][0-9]?')
+if [[ ${kernel_version/.} -le 66 ]] then
+    [[ -z $RADV_PERFTEST ]] && export RADV_PERFTEST=sam,nggc,ext_ms
+fi
+
+    
+# Vulkan ICD folder
+# [[ -z $ICD_DIR ]] && export ICD_DIR=/usr/share/vulkan/icd.d
+
+#Keyboard LED
+if [ -e "$HOME/.config/ledkeyboard" ]; then
+   big-keyboard-led on
+fi
+
+#OBS Studio game capture with vulkan
+if [ -e "/usr/bin/obs-vkcapture" ]; then
+    [[ -z $OBS_USE_EGL ]] && export OBS_USE_EGL=1
+    [[ -z $OBS_VKCAPTURE ]] && export OBS_VKCAPTURE=1
+    #Fix MangoHud overlay
+    [[ -z $VK_INSTANCE_LAYERS ]] && export VK_INSTANCE_LAYERS=VK_LAYER_MANGOHUD_overlay:VK_LAYER_OBS_vkcapture_64:VK_LAYER_VALVE_steam_overlay_64
+fi
+
+# Theme in first login
+first-login-theme
+
+if [ ! -e "$HOME/.kdebiglinux/lastlogin" ]; then
+    big-theme-plasma --apply $(cut -f2 -d" " /etc/big_desktop_changed) quiet
+fi
+
+# In Plasma 6.1 if not use empty session, logoff lock system, change to empty
+if [ ! -e "$HOME/.kdebiglinux/ksmserver_changed" ]; then
+    mkdir -p ~/.kdebiglinux
+    > "$HOME/.kdebiglinux/ksmserver_changed"
+    kwriteconfig6 --file ~/.config/ksmserverrc --group 'General' --key 'loginMode' 'emptySession'
+fi
+
+OIFS=$IFS
+IFS=$'\n'
+# Automatic rename wallpaper if needed
+for i in $(grep -o '/usr/share/wallpapers/.*.avif' ~/.config/plasma-org.kde.plasma.desktop-appletsrc); do
+    if [[ -e "${i/.avif/.heic}" ]]; then
+        sed -i "s|$i|${i/.avif/.heic}|" ~/.config/plasma-org.kde.plasma.desktop-appletsrc
+    fi
+done
+IFS=$OIFS
+
+
+nowlogin="$(cat "$HOME/.kdebiglinux/lastused")"
+#ultimo login
+lastlogin=$(cat "$HOME/.kdebiglinux/lastlogin")
+
+#Get id from last wallpaper
+ID=$(grep -Eo '\[Containments\]\[[0-9]{1,5}\]\[Wallpaper\]\[org.kde.image\]' ~/.config/plasma-org.kde.plasma.desktop-appletsrc|head -n1|sed 's|\[||g;s|\]| |g'|cut -f2 -d' ')
+
+#Get path from last wallpaper
+WALLPAPER="$(kreadconfig6 --file ~/.config/plasma-org.kde.plasma.desktop-appletsrc --group Containments --group $ID --group Wallpaper --group org.kde.image --group General --key Image|sed 's|file://||')"
+
+#Link from wallpaper to ksplash
+ln -sf "$WALLPAPER" /tmp/bigksplash.jpg
+chmod 777 /tmp/bigksplash.jpg
+
+#if [[ "$XDG_SESSION_TYPE" != "wayland" ]]; then
+#    feh --bg-fill "/tmp/bigksplash.jpg" &
+#fi
+
+# Fix full screen when switch desktop for globalmenu on or off
+if [ "$nowlogin" != "$lastlogin" ]; then
+    if [ "$(cat "$HOME/.config/kwin_maximized_disable")" = "1" ]; then
+        sed -i 's|"custom_chrome_frame":true|"custom_chrome_frame":false|g' ~/.config/chromium/Default/Preferences ~/.config/google-chrome/Default/Preferences ~/.config/BraveSoftware/Brave-Browser/Default/Preferences
+        sed -i 's|user_pref("browser.tabs.InTitlebar", 1);|user_pref("browser.tabs.InTitlebar", 0);|g' ~/.mozilla/firefox/*.default/prefs.js
+        #Kwin
+        sed -i '/BorderlessMaximizedWindows=false/d' ~/.config/kwinrc
+    else
+        #Chromium Brave Chrome
+        sed -i 's|"custom_chrome_frame":false|"custom_chrome_frame":true|g' ~/.config/chromium/Default/Preferences ~/.config/google-chrome/Default/Preferences ~/.config/BraveSoftware/Brave-Browser/Default/Preferences
+        #Firefox
+        sed -i 's|user_pref("browser.tabs.InTitlebar", 0);|user_pref("browser.tabs.InTitlebar", 1);|g' ~/.mozilla/firefox/*.default/prefs.js
+        #Menubar to kde apps
+        sed -i '/MenuBar=Disabled/d' ~/.config/okularrc
+        #Kwin
+        sed -i '/BorderlessMaximizedWindows=true/d' ~/.config/kwinrc
+    fi
+fi
+
+echo "$nowlogin" > "$HOME/.kdebiglinux/lastlogin"
+
+# Alert if free space is low than 5000
+if [ ! -e "$HOME/.config/freespacenotifierrc" ] && [ ! -e "/livefs-pkgs.txt" ]; then
+    echo '[General]
+minimumSpace=5000' > "$HOME/.config/freespacenotifierrc"
+fi
+
+# Remove old plasmoids from plasma5
+if [ -e "$HOME/.local/share/plasma/plasmoids/org.kde.plasma.systemtray" ]; then
+    mv "$HOME/.local/share/plasma/plasmoids/" "$HOME/.local/share/plasma/plasmoids-old/"
+fi
+
+if [ -e "$HOME/.local/share/plasma/plasmoids/org.kde.plasma.private.systemtray" ]; then
+    mv "$HOME/.local/share/plasma/plasmoids/" "$HOME/.local/share/plasma/plasmoids-old/"
+fi
+
+export XDG_SESSION_DESKTOP=KDE
+
+# Enable support to import ssh key
+eval "$(ssh-agent -s)"
+
+portal-kde-verify.sh &
+
+# In some laptops backlight not restore correctly, try fix this
+sudo biglinux-backlight-restore 2> /dev/null &
+
+exec startplasma-$XDG_SESSION_TYPE

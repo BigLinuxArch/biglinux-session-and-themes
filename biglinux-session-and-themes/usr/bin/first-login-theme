@@ -1,0 +1,20 @@
+#!/bin/bash
+
+/usr/share/bigbashview/bcc/apps/biglinux-themes-gui/lock-desktop.run
+
+if [ ! -e "$HOME/.local/share/user-places-big.xbel" ]; then
+    #Hide recent files in dolphin
+    sed -i 's|<GroupState-RecentlySaved-IsHidden>false</GroupState-RecentlySaved-IsHidden>|<GroupState-RecentlySaved-IsHidden>true</GroupState-RecentlySaved-IsHidden>|g' ~/.local/share/user-places.xbel
+    > "$HOME/.local/share/user-places-big.xbel"
+fi
+    
+if [ ! -e "/etc/default-theme-biglinux" ] || [ -e "$HOME/.big_desktop_theme" ] || [ -e "/tmp/big_desktop_theme" ]; then
+    exit
+
+else
+
+    export BIG_THEME="$(cat /etc/default-theme-biglinux)"
+    big-theme-apps --apply $BIG_THEME
+    systemctl --user enable big-welcome
+
+fi

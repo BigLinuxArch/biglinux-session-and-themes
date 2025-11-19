@@ -1,0 +1,17 @@
+#!/bin/sh
+
+if [ -e "/usr/share/divert/plasma.desktop" ] && [ ! -e "/usr/share/xsessions/plasma.desktop" ]; then
+  cp -f /usr/share/divert/plasma.desktop /usr/share/xsessions/plasma.desktop
+fi
+
+sed -i 's|Exec=.*|Exec=/usr/bin/startkde-biglinux wayland|g' /usr/share/wayland-sessions/plasmawayland.desktop 2> /dev/null
+sed -i 's|TryExec=.*|TryExec=/usr/bin/startkde-biglinux|g' /usr/share/wayland-sessions/plasmawayland.desktop 2> /dev/null
+sed -i 's|Exec=.*|Exec=/usr/bin/startkde-biglinux|g' /usr/share/xsessions/plasma.desktop 2> /dev/null
+sed -i 's|TryExec=.*|TryExec=/usr/bin/startkde-biglinux|g' /usr/share/xsessions/plasma.desktop 2> /dev/null
+
+# sed -i 's|Restart=always|Restart=on-failure|g' /usr/lib/systemd/user/plasma-plasmashell.service 2> /dev/null
+# if [ "$(grep 'RestartForceExitStatus' /usr/lib/systemd/user/plasma-plasmashell.service 2> /dev/null)" = "" ]; then
+#     sed -i '/Restart=on-failure/a RestartForceExitStatus=SIGTERM' /usr/lib/systemd/user/plasma-plasmashell.service 2> /dev/null
+# fi
+# # systemd more relaxed to stop apps like plasmashell
+sed -i 's|#DefaultRestartSec=100ms|DefaultRestartSec=1000ms|g;s|#DefaultStartLimitBurst=5|DefaultStartLimitBurst=10|g' /etc/systemd/user.conf 2> /dev/null

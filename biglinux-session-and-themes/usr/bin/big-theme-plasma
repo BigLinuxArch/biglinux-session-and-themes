@@ -1,0 +1,209 @@
+#!/bin/bash
+
+case "$1" in
+
+    --apply)
+
+
+#list of files you want to save
+kde=(
+kactivitymanagerdrc
+kscreenlockerrc
+ksmserverrc
+ksplashrc
+plasma-org.kde.plasma.desktop-appletsrc
+plasmashellrc
+kwin_left
+kwin_maximized_disable
+kglobalshortcutsrc
+klassyrc
+panel-colorizer
+)
+
+mkdir -p ~/.kdebiglinux
+rm -f ~/.config/enable_latte # Remove old conflict files
+
+if [ "$3" = "quiet" ] || [ "$4" = "quiet" ]; then
+    echo "No stop services"
+else
+    systemctl --user stop plasma-plasmashell
+    systemctl --user stop plasma-kglobalaccel.service
+fi
+
+LAST_USED="$(cat "$HOME/.kdebiglinux/lastused")"
+
+# Backup config
+if [ "$LAST_USED" != "" ]; then
+    mkdir -p "$HOME/.kdebiglinux/$LAST_USED"
+    #Clean latte
+    rm -Rf "$HOME/.kdebiglinux/$LAST_USED/latte"
+    #Move config to use later
+    for i in "${kde[@]}"; do
+        cp -Rf "$HOME/.config/$i" "$HOME/.kdebiglinux/$LAST_USED"
+    done
+fi
+
+
+# Clean
+if [ "$3" = "clean" ] && [ -e "/usr/share/biglinux/kdebiglinux/$2" ]; then
+    rm -Rf "$HOME/.kdebiglinux/$2"
+fi
+
+# Apply config
+if [ -e "$HOME/.kdebiglinux/$2" ]; then
+
+    #Fix kwin button
+    rm -f "$HOME/.config/kwin_left"
+    #Fix kwin maximized
+    rm -f "$HOME/.config/kwin_maximized_disable"
+    #Save lastused
+    echo "$2" > $HOME/.kdebiglinux/lastused
+
+    #Move config to use now
+    for i in "${kde[@]}"; do
+        cp -Rf "$HOME/.kdebiglinux/$2/$i" "/$HOME/.config/$i"
+    done
+else
+    if [ -e "/usr/share/biglinux/kdebiglinux/$2" ]; then
+
+        #Fix kwin button
+        rm -Rf "$HOME/.config/kwin_left"
+        #Fix kwin maximized
+        rm -f "$HOME/.config/kwin_maximized_disable"
+        #Save lastused
+        echo "$2" > $HOME/.kdebiglinux/lastused
+
+        #Move config to use now
+        for i in "${kde[@]}"; do
+            cp -Rf /usr/share/biglinux/kdebiglinux/$2/$i ~/.config/
+        done
+        big-wallpaper-random
+    fi
+fi
+
+if [ "$(cat "$HOME/.config/kwin_left")" = "1" ]; then
+    kwriteconfig6 --file ~/.config/gtk-3.0/settings.ini --group Settings --key "gtk-decoration-layout" "close,maximize,minimize:menu"
+    gsettings set org.gnome.desktop.wm.preferences button-layout "close,maximize,minimize:menu"
+    kwriteconfig6 --group "org.kde.kdecoration2" --key "ButtonsOnLeft" --file "$HOME/.config/kwinrc" "XIA"
+    kwriteconfig6 --group "org.kde.kdecoration2" --key "ButtonsOnRight" --file "$HOME/.config/kwinrc" "FSM"
+else
+    kwriteconfig6 --file ~/.config/gtk-3.0/settings.ini --group Settings --key "gtk-decoration-layout" "menu:minimize,maximize,close"
+    gsettings set org.gnome.desktop.wm.preferences button-layout "menu:minimize,maximize,close"
+    kwriteconfig6 --group "org.kde.kdecoration2" --key "ButtonsOnLeft" --file "$HOME/.config/kwinrc" "MSF"
+    kwriteconfig6 --group "org.kde.kdecoration2" --key "ButtonsOnRight" --file "$HOME/.config/kwinrc" "IAX"
+fi
+
+# Disable kwin border in maximized windows
+if [ "$(cat "$HOME/.config/kwin_maximized_disable")" = "1" ]; then
+
+    #Chromium Brave Chrome
+    chromium_based_files=(
+    "$HOME/.config/chromium/Default/Preferences"
+    "$HOME/.config/BraveSoftware/Brave-Browser/Default/Preferences"
+    "$HOME/.config/google-chrome/Default/Preferences"
+    )
+    for file in "${chromium_based_files[@]}"; do
+        if grep -q 'custom_chrome_frame' "$file"; then
+            sed -i 's|"custom_chrome_frame":true|"custom_chrome_frame":false|g' "$file"
+        else
+            sed -i 's|"has_seen_welcome_page":|"custom_chrome_frame":false,"has_seen_welcome_page":|g' "$file"
+        fi
+    done
+    
+    #Firefox
+    if grep -q 'user_pref("browser.tabs.inTitlebar", 1);' ~/.mozilla/firefox/*default*/prefs.js; then
+        sed -i 's/user_pref("browser.tabs.inTitlebar", 1);/user_pref("browser.tabs.inTitlebar", 0);/' ~/.mozilla/firefox/*default*/prefs.js
+    else
+        echo 'user_pref("browser.tabs.inTitlebar", 0);' >> ~/.mozilla/firefox/*default*/prefs.js
+    fi
+  
+    #Kwin
+    # sed -i '/BorderlessMaximizedWindows=false/d' ~/.config/kwinrc
+    kwriteconfig6 --file ~/.config/kwinrc --group Windows --key BorderlessMaximizedWindows true
+else
+    #Chromium Brave Chrome
+    chromium_based_files=(
+    "$HOME/.config/chromium/Default/Preferences"
+    "$HOME/.config/BraveSoftware/Brave-Browser/Default/Preferences"
+    "$HOME/.config/google-chrome/Default/Preferences"
+    )
+    for file in "${chromium_based_files[@]}"; do
+        if grep -q 'custom_chrome_frame' "$file"; then
+            sed -i 's|"custom_chrome_frame":false|"custom_chrome_frame":true|g' "$file"
+        else
+            sed -i 's|"has_seen_welcome_page":|"custom_chrome_frame":true,"has_seen_welcome_page":|g' "$file"
+        fi
+    done
+
+    #Firefox
+    if grep -q 'user_pref("browser.tabs.inTitlebar", 0);' ~/.mozilla/firefox/*default*/prefs.js; then
+        sed -i 's/user_pref("browser.tabs.inTitlebar", 0);/user_pref("browser.tabs.inTitlebar", 1);/' ~/.mozilla/firefox/*default*/prefs.js
+    else
+        echo 'user_pref("browser.tabs.inTitlebar", 1);' >> ~/.mozilla/firefox/*default*/prefs.js
+    fi
+
+    #Kwin
+    # sed -i '/BorderlessMaximizedWindows=true/d' ~/.config/kwinrc
+    kwriteconfig6 --file ~/.config/kwinrc --group Windows --key BorderlessMaximizedWindows false
+fi
+
+if [ "$2" = "vanilla" ]; then
+    kwriteconfig6 --file ~/.config/kdeglobals --group Icons --key "Theme" "breeze"
+fi
+
+# Run specific desktop tweaks
+/usr/share/biglinux/multi-kde/$2
+
+# Enable gtkconfig in kde config
+kwriteconfig6 --group Module-gtkconfig --file ~/.config/kded5rc --key autoload true
+
+if [ "$3" = "quiet" ] || [ "$4" = "quiet" ]; then
+    echo "No start services"
+else
+
+    qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure
+    qdbus6 org.kde.GtkConfig /GtkConfig org.kde.GtkConfig.setGtkTheme $(qdbus6 org.kde.GtkConfig /GtkConfig org.kde.GtkConfig.gtkTheme)
+    gtk-reload.py
+    systemctl --user start plasma-plasmashell
+    systemctl --user start plasma-kglobalaccel.service
+fi
+
+
+if [ -e "$HOME/.config/lockplasma" ]; then
+    qdbus6 org.kde.plasmashell /PlasmaShell evaluateScript "lockCorona(true)"
+else
+    qdbus6 org.kde.plasmashell /PlasmaShell evaluateScript "lockCorona(false)"
+fi
+;;
+
+    --list)
+for i  in  $(ls /usr/share/biglinux/kdebiglinux/); do
+    echo "$i"
+done
+exit
+;;
+
+    *)
+echo " Usage:
+--list
+--apply name-of-theme
+--clean to restart theme
+
+Example to apply classic theme:
+
+big-theme-plasma --apply classic
+or
+big-theme-plasma --apply classic clean
+or
+big-theme-plasma --apply classic quiet
+
+
+If use clean, remove configuration in home folder and use clean configuration.
+
+Use quiet to change files but not instant apply"
+exit
+;;
+
+esac
+
+

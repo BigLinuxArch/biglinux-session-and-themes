@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+#Translation
+export TEXTDOMAINDIR="/usr/share/locale"
+export TEXTDOMAIN=biglinux-session-and-themes
+
+cd /usr/share/bigbashview/apps/biglinux-themes-gui/
+python main.py

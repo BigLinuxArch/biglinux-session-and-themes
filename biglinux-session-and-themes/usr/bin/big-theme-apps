@@ -1,0 +1,111 @@
+#!/bin/bash
+
+OIFS=$IFS
+IFS=$'\n'
+
+folder="/usr/share/biglinux/themes"
+
+case "$1" in
+
+    --apply)
+
+    rm -Rf ~/.cache/plasma*
+    rm -Rf ~/.cache/kwin
+    rm -Rf ~/.cache/gtk-3.0
+    rm -Rf ~/.cache/gtk-4.0
+    rm -Rf ~/.cache/icon-cache.kcache
+    rm -R ~/.cache/kcmshell5
+    # Clean GTK theme folders
+    rm -Rf ~/.config/gtk-3.0
+    rm -Rf ~/.config/gtk-4.0
+    rm -Rf ~/.config/xsettingsd
+
+	#Confere se o arquivo existe
+    if [ -e "$folder/$2" ]; then
+        cp -Rf $folder/$2/. "$HOME"
+
+        #Fix icon color in smplayer
+        if [ "$(echo "$2" | grep -i dark)" = "" ]
+		then
+            sed -i 's|^ *\biconset\b *=.*|iconset=Papirus|' ~/.config/smplayer/smplayer.ini
+		else
+            sed -i 's|^ *\biconset\b *=.*|iconset=PapirusDark|' ~/.config/smplayer/smplayer.ini
+		fi
+
+        #side of minimize maximize and close buttons
+        if [ "$(cat "$HOME/.config/kwin_left")" = "1" ]; then
+            kwriteconfig6 --file ~/.config/gtk-3.0/settings.ini --group Settings --key "gtk-decoration-layout" "close,maximize,minimize:menu"
+            kwriteconfig6 --group "org.kde.kdecoration2" --key "ButtonsOnLeft" --file "$HOME/.config/kwinrc" "XIA"
+            kwriteconfig6 --group "org.kde.kdecoration2" --key "ButtonsOnRight" --file "$HOME/.config/kwinrc" "M"
+        else
+            kwriteconfig6 --file ~/.config/gtk-3.0/settings.ini --group Settings --key "gtk-decoration-layout" "menu:minimize,maximize,close"
+            kwriteconfig6 --group "org.kde.kdecoration2" --key "ButtonsOnLeft" --file "$HOME/.config/kwinrc" "M"
+            kwriteconfig6 --group "org.kde.kdecoration2" --key "ButtonsOnRight" --file "$HOME/.config/kwinrc" "IAX"
+        fi
+
+        # Disable kwin border in maximized windows if needed for globalmenu
+        if [ "$(cat "$HOME/.config/kwin_maximized_disable")" = "1" ]; then
+            #Chromium Brave Chrome
+            sed -i 's|"custom_chrome_frame":true|"custom_chrome_frame":false|g' ~/.config/chromium/Default/Preferences ~/.config/google-chrome/Default/Preferences ~/.config/BraveSoftware/Brave-Browser/Default/Preferences
+            #Firefox
+            sed -i 's|user_pref("browser.tabs.InTitlebar", 1);|user_pref("browser.tabs.InTitlebar", 0);|g' ~/.mozilla/firefox/*.default/prefs.js
+            #Kwin
+            kwriteconfig6 --file ~/.config/kwinrc --group Windows --key BorderlessMaximizedWindows true
+        else
+            #Chromium Brave Chrome
+            sed -i 's|"custom_chrome_frame":false|"custom_chrome_frame":true|g' ~/.config/chromium/Default/Preferences ~/.config/google-chrome/Default/Preferences ~/.config/BraveSoftware/Brave-Browser/Default/Preferences
+            #Firefox
+            sed -i 's|user_pref("browser.tabs.InTitlebar", 0);|user_pref("browser.tabs.InTitlebar", 1);|g' ~/.mozilla/firefox/*.default/prefs.js
+            #Kwin
+            kwriteconfig6 --file ~/.config/kwinrc --group Windows --key BorderlessMaximizedWindows false
+        fi
+
+        # Run specific desktop tweaks
+        /usr/share/biglinux/multi-kde/$(cat ~/.kdebiglinux/lastused)
+        
+        if pgrep plasmashell; then
+
+                qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure
+                # Clean icon theme and apply again to fix kwin buttons
+                kwriteconfig6 --group Icons --key Theme ""
+                /usr/lib/plasma-changeicons $(kreadconfig6 --group Icons --key Theme --file "$folder/$2/.config/kdeglobals")
+
+                # Change theme color to change back and fix on the fly change
+                plasma-apply-colorscheme KvArc
+                # Apply Theme
+                plasma-apply-colorscheme $(kreadconfig6 --group General --key ColorScheme --file "$folder/$2/.config/kdeglobals")
+
+                # Enable gtkconfig in kde config
+                kwriteconfig6 --group Module-gtkconfig --file ~/.config/kded5rc --key autoload true
+
+                #Configure GTK
+                qdbus6 org.kde.GtkConfig /GtkConfig org.kde.GtkConfig.setGtkTheme $(grep 'gtk-theme-name=' "$HOME/.config/gtk-3.0/settings.ini" | cut -f2-5 -d=)
+                gtk-reload.py
+                systemctl --user restart plasma-xdg-desktop-portal-kde.service
+        fi
+        
+        echo "$2" > "$HOME/.big_desktop_theme"
+        
+   else
+        echo "Theme not found."
+    fi
+    exit
+    ;;
+
+    --list)
+	for i  in  $(ls $folder); do
+        echo "$i"
+    done
+	exit
+    ;;
+
+    *)
+	echo " Usage:
+	--list
+	--apply name-of-theme"
+	exit
+    ;;
+
+esac
+
+IFS=$OIFS
